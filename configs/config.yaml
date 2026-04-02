@@ -1,0 +1,35 @@
+# Project Metadata
+project_name: "3D_BBox_Perception_Challenge"
+experiment_name: "fusion_resnet18_v1"
+
+# Data Paths
+data:
+  root_dir: "/home/kiranraj-muthuraj/Jobs/sereact/Imitation Learning Researcher/take‑home assignment/dataset/dl_challenge"
+  batch_size: 4               # Reduced to 4 for RTX 3050 stability
+  num_workers: 4
+  target_size: [480, 640]     # Standardized size for resizing logic in Dataset
+  train_split: 0.8
+
+# Model Architecture
+model:
+  rgb_backbone: "resnet18"
+  pc_channels: 3               # XYZ
+  hidden_dim: 512
+  dropout: 0.2
+  output_dim: 7                # x, y, z, w, h, l, yaw
+
+# Training Hyperparameters
+train:
+  max_epochs: 50
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  reg_weight: 5.0              # Multiplier for BBox regression vs Classification
+  precision: "16-mixed"        # 16-bit Mixed Precision for GPU speedup
+  accelerator: "gpu"
+  devices: 1
+
+# Logging & Checkpoints
+logging:
+  use_wandb: true
+  save_dir: "./checkpoints"
+  log_every_n_steps: 10

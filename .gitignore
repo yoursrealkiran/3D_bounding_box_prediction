@@ -1,0 +1,16 @@
+# dotenv environment variable files
+.env
+
+# Python cache files
+__pycache__/
+
+# Checkpoint files
+checkpoints/
+
+# results and visualizations
+results/
+wandb/
+
+# VSCode settings 
+.vscode/
+**/.vscode/
