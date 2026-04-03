@@ -1,14 +1,17 @@
 import os
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
 import lightning as L
 from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.callbacks import ModelCheckpoint, LearningRateMonitor
 
-# Import your custom modules
+# Custom modules
 from configs.load_config import load_config
 from data.data_module import ThreeDDataModule
 from models.pipeline_main import Fusion3DDetector
 from utils.metrics import get_3d_iou
+from utils.geometry import params_8_to_params_7
 
 class BBoxTask(L.LightningModule):
     def __init__(self, cfg):
@@ -16,98 +19,122 @@ class BBoxTask(L.LightningModule):
         self.cfg = cfg
         self.save_hyperparameters()
         
-        # Initialize the Fusion Model
         self.model = Fusion3DDetector()
         
-        # Loss functions
-        self.reg_loss = torch.nn.SmoothL1Loss() # Robust to outliers in PC
-        self.cls_loss = torch.nn.BCEWithLogitsLoss()
-
-    def forward(self, rgb, pc):
-        return self.model(rgb, pc)
+        # Reduced pos_weight for Gaussian: Since multiple pixels are now "positive"
+        # per object, a weight of 5.0-8.0 is usually sufficient to balance the grid.
+        self.register_buffer("pos_weight", torch.tensor([float(cfg['train'].get('pos_weight', 8.0))]))
+        self.cls_loss = nn.BCEWithLogitsLoss(pos_weight=self.pos_weight)
+        
+        self.reg_loss = nn.HuberLoss(delta=1.0)
 
     def training_step(self, batch, batch_idx):
-        rgb, pc, gt_box = batch['rgb'], batch['pc'], batch['gt_box']
-        presence = batch['presence']
+        # 1. Forward Pass
+        pred_logits, pred_boxes = self.model(batch['rgb'], batch['pc'])
+        target_map = batch['target_map'] 
         
-        logits, pred_box = self.model(rgb, pc)
+        gt_logits = target_map[:, 0:1, :, :]
+        gt_boxes = target_map[:, 1:, :, :]
         
-        # 1. Classification Loss (Is an object there?)
-        c_loss = self.cls_loss(logits, presence)
+        # 2. Classification Loss (Heatmap)
+        loss_cls = self.cls_loss(pred_logits, gt_logits)
         
-        # 2. Regression Loss (Box parameters)
-        # We only calculate regression loss for samples where an object exists
-        r_loss = self.reg_loss(pred_box, gt_box)
+        # 3. Masked Regression Loss
+        # Only compute regression loss at the peak of the Gaussian (1.0)
+        mask = (gt_logits == 1.0)
         
-        total_loss = c_loss + (self.cfg['train']['reg_weight'] * r_loss)
+        if mask.sum() > 0:
+            masked_pred = pred_boxes.permute(0, 2, 3, 1)[mask.squeeze(1)]
+            masked_gt = gt_boxes.permute(0, 2, 3, 1)[mask.squeeze(1)]
+            loss_reg = self.reg_loss(masked_pred, masked_gt)
+        else:
+            loss_reg = pred_boxes.sum() * 0.0
+
+        # 4. Total Loss
+        reg_weight = float(self.cfg['train'].get('reg_weight', 20.0))
+        total_loss = loss_cls + (reg_weight * loss_reg)
         
         self.log("train/loss", total_loss, prog_bar=True)
-        self.log("train/reg_loss", r_loss)
+        self.log("train/reg_loss", loss_reg)
+        self.log("train/cls_loss", loss_cls)
         return total_loss
 
     def validation_step(self, batch, batch_idx):
-        rgb, pc, gt_box = batch['rgb'], batch['pc'], batch['gt_box']
-        logits, pred_box = self.model(rgb, pc)
+        pred_logits, pred_boxes = self.model(batch['rgb'], batch['pc'])
+        target_map = batch['target_map']
         
-        val_loss = self.reg_loss(pred_box, gt_box)
+        loss_cls = self.cls_loss(pred_logits, target_map[:, 0:1, :, :])
+        self.log("val/loss", loss_cls, prog_bar=True)
         
-        # Calculate 3D IoU for the batch
-        iou = get_3d_iou(pred_box[0], gt_box[0]) # Simplified for single object
-        
-        self.log("val/loss", val_loss, prog_bar=True)
-        self.log("val/iou", iou, prog_bar=True)
-        return val_loss
+        mask = target_map[:, 0:1, :, :] == 1.0
+        if mask.sum() > 0:
+            indices = torch.where(mask)
+            b, _, y, x = [idx[0] for idx in indices]
+            
+            p8 = pred_boxes[b, :, y, x].detach().cpu().numpy()
+            g8 = target_map[b, 1:, y, x].detach().cpu().numpy()
+            
+            p7 = params_8_to_params_7(p8)
+            g7 = params_8_to_params_7(g8)
+            
+            iou = get_3d_iou(torch.from_numpy(p7).to(self.device), 
+                             torch.from_numpy(g7).to(self.device))
+            self.log("val/iou", iou, prog_bar=True)
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(
             self.parameters(), 
             lr=float(self.cfg['train']['learning_rate']),
-            weight_decay=float(self.cfg['train']['weight_decay'])
+            weight_decay=float(self.cfg['train'].get('weight_decay', 0.01))
         )
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=self.cfg['train']['max_epochs'])
-        return {"optimizer": optimizer, "lr_scheduler": scheduler}
+        
+        scheduler = torch.optim.lr_scheduler.OneCycleLR(
+            optimizer,
+            max_lr=float(self.cfg['train']['learning_rate']),
+            total_steps=self.trainer.estimated_stepping_batches
+        )
+        
+        return {
+            "optimizer": optimizer, 
+            "lr_scheduler": {"scheduler": scheduler, "interval": "step"}
+        }
 
 def main():
-    # 1. Load Configuration
+    torch.set_float32_matmul_precision('high')
     cfg = load_config("configs/config.yaml")
     
-    # 2. Setup DataModule
     dm = ThreeDDataModule(
         data_dir=cfg['data']['root_dir'],
-        batch_size=cfg['data']['batch_size'],
-        num_workers=cfg['data']['num_workers']
+        batch_size=cfg['data']['batch_size'], 
+        num_workers=cfg['data']['num_workers'],
+        grid_size=tuple(cfg['data']['grid_size']) 
     )
     
-    # 3. Setup Logger & Callbacks
-    logger = None
-    if cfg['logging']['use_wandb']:
-        logger = WandbLogger(project=cfg['project_name'], name=cfg['experiment_name'])
-        
+    logger = WandbLogger(project=cfg['project_name']) if cfg['logging']['use_wandb'] else None
+    
+    # MODIFIED: Checkpoint every 10 epochs
     checkpoint_callback = ModelCheckpoint(
         dirpath=cfg['logging']['save_dir'],
-        filename="best-bbox-model-{epoch:02d}-{val_iou:.2f}",
-        monitor="val/iou",
-        mode="max"
+        filename="3d-fusion-{epoch:02d}-{val_loss:.2f}",
+        monitor="val/loss",
+        mode="min",
+        save_top_k=5,           # Keep more models since we save less often
+        every_n_epochs=10,      # <--- KEY CHANGE
+        save_on_train_epoch_end=True # Ensures it triggers exactly at epoch end
     )
     
-    lr_monitor = LearningRateMonitor(logging_interval='step')
-
-    # 4. Initialize Task
-    task = BBoxTask(cfg)
-
-    # 5. Initialize Trainer
     trainer = L.Trainer(
         max_epochs=cfg['train']['max_epochs'],
-        accelerator=cfg['train']['accelerator'],
-        devices=cfg['train']['devices'],
-        precision=cfg['train']['precision'],
+        accelerator="gpu",
+        devices=1,
         logger=logger,
-        callbacks=[checkpoint_callback, lr_monitor],
-        log_every_n_steps=cfg['logging']['log_every_n_steps']
+        callbacks=[checkpoint_callback, LearningRateMonitor(logging_interval='step')],
+        gradient_clip_val=float(cfg['train'].get('gradient_clip_val', 1.0)),
+        accumulate_grad_batches=int(cfg['train'].get('accumulate_grad_batches', 1)),
+        precision="16-mixed"
     )
 
-    # 6. Start Training
-    trainer.fit(task, datamodule=dm)
+    trainer.fit(BBoxTask(cfg), datamodule=dm)
 
 if __name__ == "__main__":
     main()
