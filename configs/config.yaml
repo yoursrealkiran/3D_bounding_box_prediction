@@ -1,32 +1,44 @@
 # Project Metadata
 project_name: "3D_BBox_Perception_Challenge"
-experiment_name: "fusion_resnet18_v1"
+experiment_name: "dense_fusion_v2_gaussian_residuals"
 
-# Data Paths
+# Data Configuration
 data:
-  root_dir: "/home/kiranraj-muthuraj/Jobs/sereact/Imitation Learning Researcher/take‑home assignment/dataset/dl_challenge"
-  batch_size: 4               # Reduced to 4 for RTX 3050 stability
+  root_dir: "/home/kiranraj-muthuraj/self_projects/3D_bounding_box_prediction/dl_challenge"
+  batch_size: 4               
   num_workers: 4
-  target_size: [480, 640]     # Standardized size for resizing logic in Dataset
+  target_size: [480, 640]     
+  grid_size: [15, 20] # 1/32 scale
   train_split: 0.8
+  # NEW: Physical range for world-to-grid mapping (in meters)
+  range_x: [-10.0, 10.0]
+  range_z: [0.0, 20.0]
 
 # Model Architecture
 model:
   rgb_backbone: "resnet18"
-  pc_channels: 3               # XYZ
-  hidden_dim: 512
+  pc_channels: 3               
+  fusion_channels: 1024        # 512 (RGB) + 512 (PC)
+  head_hidden_dim: 512
   dropout: 0.2
-  output_dim: 7                # x, y, z, w, h, l, yaw
+  # NEW: Gaussian sigma for target generation
+  gaussian_sigma: 1.0
 
 # Training Hyperparameters
 train:
-  max_epochs: 50
-  learning_rate: 0.001
-  weight_decay: 0.0001
-  reg_weight: 5.0              # Multiplier for BBox regression vs Classification
-  precision: "16-mixed"        # 16-bit Mixed Precision for GPU speedup
+  max_epochs: 100              # 40 was likely too low for 3D convergence; 100 is a safer target
+  learning_rate: 4e-4          # Increased from 2e-4 to match the larger effective batch size (32)
+  weight_decay: 0.01           # AdamW stability
+  
+  # MODIFIED: Since we only regress on the center pixel (gt == 1.0),
+  # we keep this weight high to ensure the model prioritizes box geometry.
+  reg_weight: 20.0             
+  
+  precision: "16-mixed"        # Recommended for modern GPUs
   accelerator: "gpu"
   devices: 1
+  gradient_clip_val: 1.0       # Relaxed slightly to allow for faster learning with stable batches
+  accumulate_grad_batches: 8   # Effective batch size = 32
 
 # Logging & Checkpoints
 logging:
