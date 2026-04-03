@@ -2,24 +2,27 @@ import torch
 import torch.nn as nn
 
 class BBoxHead(nn.Module):
-    def __init__(self, input_dim=1024): # 512 (RGB) + 512 (PC)
+    def __init__(self, input_channels=1024):
         super().__init__()
-        self.fc = nn.Sequential(
-            nn.Linear(input_dim, 512),
-            nn.ReLU(),
-            nn.Dropout(0.2),
-            nn.Linear(512, 256),
-            nn.ReLU()
+        
+        # The shared conv now uses kernel 3 for spatial context
+        self.shared_conv = nn.Sequential(
+            nn.Conv2d(input_channels, 512, kernel_size=3, padding=1),
+            nn.BatchNorm2d(512),
+            nn.ReLU(inplace=True),
+            nn.Dropout2d(0.2), 
+            nn.Conv2d(512, 256, kernel_size=1), # Squeeze back to 256
+            nn.ReLU(inplace=True)
         )
         
-        # Output: 7 parameters [x, y, z, w, h, l, yaw]
-        self.regressor = nn.Linear(256, 7)
+        # Heatmap prediction (Objectness)
+        self.classifier = nn.Conv2d(256, 1, kernel_size=1)
         
-        # Output: Class probability (e.g., is there an object?)
-        self.classifier = nn.Linear(256, 1)
+        # Box parameter regression [x, y, z, w, l, h, sin, cos]
+        self.regressor = nn.Conv2d(256, 8, kernel_size=1)
 
     def forward(self, x):
-        x = self.fc(x)
-        box_params = self.regressor(x)
+        x = self.shared_conv(x)
         logits = self.classifier(x)
-        return logits, box_params
+        bboxes = self.regressor(x)
+        return logits, bboxes
