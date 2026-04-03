@@ -1,33 +1,64 @@
-import matplotlib.pyplot as plt
-import numpy as np
 import cv2
-from .geometry import params_7_to_corners_8 
+import numpy as np
+import torch
+from .geometry import params_8_to_params_7, params_7_to_corners_8
 
-def plot_bev_with_boxes(pc, gt_box, pred_box, save_path):
+def project_3d_to_2d(corners_3d, K):
+    """K: [[fx, 0, cx], [0, fy, cy], [0, 0, 1]]"""
+    # Prevent division by zero for points behind camera
+    z = corners_3d[:, 2:3]
+    z[z < 0.1] = 0.1 
+    
+    pts_2d = np.dot(K, corners_3d.T)
+    pts_2d = pts_2d[:2, :] / pts_2d[2, :]
+    return pts_2d.T
+
+def draw_projected_box(image, params_7, K, color=(0, 255, 0)):
+    corners_3d = params_7_to_corners_8(params_7)
+    pts_2d = project_3d_to_2d(corners_3d, K).astype(int)
+
+    # 12 lines of a cube
+    edges = [
+        (0,1), (1,2), (2,3), (3,0), # Bottom
+        (4,5), (5,6), (6,7), (7,4), # Top
+        (0,4), (1,5), (2,6), (3,7)  # Vertical
+    ]
+
+    for start, end in edges:
+        cv2.line(image, tuple(pts_2d[start]), tuple(pts_2d[end]), color, 2)
+    return image
+
+def visualize_multi_objects(rgb_img, pred_map, K, threshold=0.6):
     """
-    Creates a Bird's Eye View (X-Z plane) plot.
-    pc: (3, H, W)
-    boxes: [x, y, z, w, h, l, yaw]
+    rgb_img: [H, W, 3] (0-1 float)
+    pred_map: [9, 15, 20] (logits/heatmap + regression)
     """
-    plt.figure(figsize=(8, 8))
+    # Convert to 0-255 uint8 for CV2
+    vis_img = (rgb_img * 255).astype(np.uint8).copy()
+    vis_img = cv2.cvtColor(vis_img, cv2.COLOR_RGB2BGR)
     
-    # Flatten Point Cloud for scattering
-    x_points = pc[0].flatten()
-    z_points = pc[2].flatten()
+    heatmap = pred_map[0]
+    # Sigmoid if the input is raw logits
+    if heatmap.max() > 1.0 or heatmap.min() < 0.0:
+        heatmap = 1 / (1 + np.exp(-heatmap))
+
+    # Find peaks (Simple Local Maxima)
+    indices = np.argwhere(heatmap > threshold)
     
-    # Subsample for speed
-    idx = np.random.choice(len(x_points), 5000, replace=False)
-    plt.scatter(x_points[idx], z_points[idx], s=1, c='gray', alpha=0.3)
-    
-    # Plot GT Box (Green)
-    gt_corners = params_7_to_corners_8(gt_box)
-    plt.plot(gt_corners[[0,1,2,3,0], 0], gt_corners[[0,1,2,3,0], 2], 'g-', label='GT')
-    
-    # Plot Pred Box (Red)
-    pred_corners = params_7_to_corners_8(pred_box)
-    plt.plot(pred_corners[[0,1,2,3,0], 0], pred_corners[[0,1,2,3,0], 2], 'r-', label='Pred')
-    
-    plt.legend()
-    plt.title("Bird's Eye View (BEV) Prediction vs Ground Truth")
-    plt.savefig(save_path)
-    plt.close()
+    # Sort by confidence score (highest first)
+    indices = sorted(indices, key=lambda i: heatmap[i[0], i[1]], reverse=True)
+
+    drawn_centers = []
+    for y, x in indices:
+        # Simple NMS: Don't draw if center is too close to an existing box
+        if any(np.linalg.norm(np.array([y,x]) - np.array(c)) < 1.5 for c in drawn_centers):
+            continue
+            
+        params_8 = pred_map[1:, y, x]
+        params_7 = params_8_to_params_7(params_8)
+        
+        # Draw Box
+        vis_img = draw_projected_box(vis_img, params_7, K)
+        drawn_centers.append((y, x))
+        
+    return cv2.cvtColor(vis_img, cv2.COLOR_BGR2RGB)
