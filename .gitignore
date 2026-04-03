@@ -1,6 +1,3 @@
-# dotenv environment variable files
-.env
-
 # Python cache files
 __pycache__/
 
