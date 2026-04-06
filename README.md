@@ -62,38 +62,30 @@ scene_xxx/
 
 ### 1. Clone the Repository
 
-```bash
-git clone https://github.com/yoursrealkiran/3D_bounding_box_prediction.git
-cd 3D_bounding_box_prediction
+`git clone https://github.com/yoursrealkiran/3D_bounding_box_prediction.git`
+`cd 3D_bounding_box_prediction`
 
 ### 2. Install uv
 
-```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-uv --version
+`curl -LsSf https://astral.sh/uv/install.sh | sh`
+`uv --version`
 
 ### 3. Create a Virual Environment
 
-```bash
-uv venv
+`uv venv`
 
 #### Activate the environment
 
-```bash
-source .venv/bin/activate
-
+`source .venv/bin/activate`
 
 ### 4. Install Dependencies
 
-```bash
-uv sync
+`uv sync`
 
 ### 5. Run training
 
-```bash
-uv run python train.py
+`uv run python train.py`
 
 ### 5. Run inference (evaluation) 
 
-```bash
-uv run python eval.py
+`uv run python eval.py`
