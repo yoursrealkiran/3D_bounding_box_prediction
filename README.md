@@ -17,7 +17,7 @@ The model uses a two-stream architecture:
 
 ## Project Structure
 
-
+```bash
 3D_bounding_box_prediction/
 ├── configs/
 │   ├── __init__.py
@@ -46,14 +46,19 @@ The model uses a two-stream architecture:
 ├── eval.py
 └── README.md
 
+```
+
+---
+
 ## Dataset Format
 
-
+```bash
 scene_xxx/
 ├── rgb.jpg
 ├── pc.npy
 ├── mask.npy
 └── bbox3d.npy
+```
 
 
 ---
