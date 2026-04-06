@@ -1,47 +1,89 @@
 # Project Metadata
 project_name: "3D_BBox_Perception_Challenge"
-experiment_name: "dense_fusion_v2_gaussian_residuals"
+experiment_name: "3D_BBox_Perception"
 
 # Data Configuration
 data:
-  root_dir: "/home/kiranraj-muthuraj/self_projects/3D_bounding_box_prediction/dl_challenge"
-  batch_size: 4               
+  root_dir: "<path_to_dlchallenge_dataset_folder>"
+  batch_size: 4
   num_workers: 4
-  target_size: [480, 640]     
-  grid_size: [15, 20] # 1/32 scale
+
+  # Input resolution for both RGB and organized point cloud
+  target_size: [480, 640]
+
+  # Final detector output resolution
+  grid_size: [50, 70]
+
   train_split: 0.8
-  # NEW: Physical range for world-to-grid mapping (in meters)
-  range_x: [-10.0, 10.0]
-  range_z: [0.0, 20.0]
+
+  # Physical world ranges used for x/z <-> grid mapping
+  range_x: [-0.3, 0.3]
+  range_z: [-0.8, 0.0]
+
+  # Same z shift used in dataset preprocessing
+  z_shift: 1.5
 
 # Model Architecture
 model:
   rgb_backbone: "resnet18"
-  pc_channels: 3               
-  fusion_channels: 1024        # 512 (RGB) + 512 (PC)
+  freeze_rgb_layers: true
+  pc_channels: 3
+  fusion_channels: 1024
   head_hidden_dim: 512
   dropout: 0.2
-  # NEW: Gaussian sigma for target generation
-  gaussian_sigma: 1.0
+  gaussian_sigma: 0.4
 
 # Training Hyperparameters
 train:
-  max_epochs: 100              # 40 was likely too low for 3D convergence; 100 is a safer target
-  learning_rate: 4e-4          # Increased from 2e-4 to match the larger effective batch size (32)
-  weight_decay: 0.01           # AdamW stability
-  
-  # MODIFIED: Since we only regress on the center pixel (gt == 1.0),
-  # we keep this weight high to ensure the model prioritizes box geometry.
-  reg_weight: 20.0             
-  
-  precision: "16-mixed"        # Recommended for modern GPUs
+  seed: 42
+  max_epochs: 100
+  learning_rate: 4.0e-4
+  weight_decay: 0.01
+
+  # Heatmap imbalance handling
+  pos_weight: 30.0
+
+  # Regression loss weighting
+  reg_weight: 5.0
+  huber_delta: 1.0
+
+  focal_alpha: 2.0
+  focal_beta: 4.0
+
+  seg_weight: 0.5
+
+  # Optimizer / scheduler
+  onecycle_pct_start: 0.1
+  onecycle_div_factor: 25.0
+  onecycle_final_div_factor: 10000.0
+
+  # Runtime
+  precision: "16-mixed"
   accelerator: "gpu"
   devices: 1
-  gradient_clip_val: 1.0       # Relaxed slightly to allow for faster learning with stable batches
-  accumulate_grad_batches: 8   # Effective batch size = 32
+  gradient_clip_val: 1.0
+  accumulate_grad_batches: 8
+  deterministic: false
 
 # Logging & Checkpoints
 logging:
   use_wandb: true
   save_dir: "./checkpoints"
   log_every_n_steps: 10
+  checkpoint_every_n_epochs: 1
+
+# Evaluation defaults
+eval:
+  score_threshold: 0.40
+  seg_threshold: 0.25
+  nms_grid_distance: 2.5
+  top_k: 10
+  peak_pool_kernel: 3
+  save_dir: "./results"
+
+  # Camera intrinsics for projection
+  camera_intrinsics:
+    fx: 615.0
+    fy: 615.0
+    cx: 320.0
+    cy: 240.0
