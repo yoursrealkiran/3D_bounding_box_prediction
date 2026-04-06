@@ -68,6 +68,7 @@ scene_xxx/
 ### 1. Clone the Repository
 
 `git clone https://github.com/yoursrealkiran/3D_bounding_box_prediction.git`
+
 `cd 3D_bounding_box_prediction`
 
 ### 2. Install uv
