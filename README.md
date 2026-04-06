@@ -74,6 +74,7 @@ scene_xxx/
 ### 2. Install uv
 
 `curl -LsSf https://astral.sh/uv/install.sh | sh`
+
 `uv --version`
 
 ### 3. Create a Virual Environment
