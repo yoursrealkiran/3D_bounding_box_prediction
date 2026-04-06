@@ -17,7 +17,7 @@ The model uses a two-stream architecture:
 
 ## Project Structure
 
-```text
+
 3D_bounding_box_prediction/
 ├── configs/
 │   ├── __init__.py
@@ -48,7 +48,7 @@ The model uses a two-stream architecture:
 
 ## Dataset Format
 
-```text
+
 scene_xxx/
 ├── rgb.jpg
 ├── pc.npy
