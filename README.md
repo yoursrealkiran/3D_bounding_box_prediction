@@ -94,16 +94,22 @@ In a terminal,
 
 ### 5. Run training
 
-Set the `root_dir` in config.yaml file to dataset folder path
+Set the `root_dir` in `config.yaml` file to dataset folder path
 
 `uv run python train.py`
+
+The checkpoints will be saved `checkpoints/` folder 
 
 ### 5. Run inference (evaluation) 
 
 `uv run python eval.py`
+
+The evaluation results will be saved `results/` folder
 
 ### 6. Export into ONNX format
 
 To export the trained model into the ONNX format for deployment and inference in production environments.
 
 `uv run python export.py`
+
+The exported model will be saved `checkpoints/` folder 
