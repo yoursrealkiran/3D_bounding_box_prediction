@@ -44,6 +44,7 @@ The model uses a two-stream architecture:
 ├── results/
 ├── train.py
 ├── eval.py
+├── export.py
 └── README.md
 
 ```
@@ -66,6 +67,8 @@ scene_xxx/
 ## 🚀 Setup Instructions
 
 ### 1. Clone the Repository
+
+In a terminal,
 
 `git clone https://github.com/yoursrealkiran/3D_bounding_box_prediction.git`
 
@@ -91,8 +94,16 @@ scene_xxx/
 
 ### 5. Run training
 
+Set the `root_dir` in config.yaml file to dataset folder path
+
 `uv run python train.py`
 
 ### 5. Run inference (evaluation) 
 
 `uv run python eval.py`
+
+### 6. Export into ONNX format
+
+To export the trained model into the ONNX format for deployment and inference in production environments.
+
+`uv run python export.py`
