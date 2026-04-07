@@ -1,10 +1,10 @@
 # Project Metadata
-project_name: "3D_BBox_Perception_Challenge"
-experiment_name: "3D_BBox_Perception"
+project_name: "3D_BBox_Prediction_Challenge"
+experiment_name: "3D_BBox_Prediction"
 
 # Data Configuration
 data:
-  root_dir: "<path_to_dlchallenge_dataset_folder>"
+  root_dir: "/home/kiranraj-muthuraj/self_projects/3D_bounding_box_prediction/dl_challenge"
   batch_size: 4
   num_workers: 4
 
@@ -31,13 +31,13 @@ model:
   fusion_channels: 1024
   head_hidden_dim: 512
   dropout: 0.2
-  gaussian_sigma: 0.4
+  gaussian_sigma: 0.6
 
 # Training Hyperparameters
 train:
   seed: 42
   max_epochs: 100
-  learning_rate: 4.0e-4
+  learning_rate: 2e-4
   weight_decay: 0.01
 
   # Heatmap imbalance handling
@@ -45,12 +45,16 @@ train:
 
   # Regression loss weighting
   reg_weight: 5.0
-  huber_delta: 1.0
 
+  # Classification loss weighting 
+  cls_weight: 3.0
+
+  # Segmentation loss weighting
+  seg_weight: 0.1
+
+  huber_delta: 1.0
   focal_alpha: 2.0
   focal_beta: 4.0
-
-  seg_weight: 0.5
 
   # Optimizer / scheduler
   onecycle_pct_start: 0.1
@@ -74,10 +78,10 @@ logging:
 
 # Evaluation defaults
 eval:
-  score_threshold: 0.40
-  seg_threshold: 0.25
-  nms_grid_distance: 2.5
-  top_k: 10
+  score_threshold: 0.15
+  seg_threshold: 0.10
+  nms_grid_distance: 2.0
+  top_k: 20
   peak_pool_kernel: 3
   save_dir: "./results"
 
