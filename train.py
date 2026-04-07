@@ -136,8 +136,9 @@ class BBoxTask(L.LightningModule):
 
         reg_w = float(self.cfg["train"].get("reg_weight", 50.0))
         seg_w = float(self.cfg["train"].get("seg_weight", 0.5))
+        cls_w = float(self.cfg["train"].get("cls_weight", 2.0))
 
-        total_loss = loss_cls + reg_w * loss_reg + seg_w * loss_seg
+        total_loss = cls_w * loss_cls + reg_w * loss_reg + seg_w * loss_seg
 
         self.log("train/loss", total_loss, prog_bar=True, on_step=True, on_epoch=True, batch_size=rgb.size(0))
         self.log("train/loss_cls", loss_cls, on_step=True, on_epoch=True, batch_size=rgb.size(0))
@@ -193,8 +194,9 @@ class BBoxTask(L.LightningModule):
 
         reg_w = float(self.cfg["train"].get("reg_weight", 50.0))
         seg_w = float(self.cfg["train"].get("seg_weight", 0.5))
+        cls_w = float(self.cfg["train"].get("cls_weight", 2.0))
 
-        total_loss = loss_cls + reg_w * loss_reg + seg_w * loss_seg
+        total_loss = cls_w * loss_cls + reg_w * loss_reg + seg_w * loss_seg
 
         self.log("val/loss", total_loss, prog_bar=True, on_step=False, on_epoch=True, batch_size=rgb.size(0))
         self.log("val/loss_cls", loss_cls, on_step=False, on_epoch=True, batch_size=rgb.size(0))
@@ -247,6 +249,7 @@ class BBoxTask(L.LightningModule):
         mean_yaw = torch.stack(yaw_errors).mean()
 
         self.log("val/iou", mean_iou, prog_bar=True, on_step=False, on_epoch=True, batch_size=rgb.size(0))
+        self.log("val/iou_step", mean_iou, on_step=True, on_epoch=False, batch_size=rgb.size(0))
         self.log("val/center_err", mean_center, on_step=False, on_epoch=True, batch_size=rgb.size(0))
         self.log("val/size_l1", mean_size, on_step=False, on_epoch=True, batch_size=rgb.size(0))
         self.log("val/yaw_err_rad", mean_yaw, on_step=False, on_epoch=True, batch_size=rgb.size(0))
