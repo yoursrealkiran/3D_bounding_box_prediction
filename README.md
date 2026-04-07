@@ -44,6 +44,7 @@ The model uses a two-stream architecture:
 ├── results/
 ├── train.py
 ├── eval.py
+├── eval_onnx.py
 ├── export.py
 └── README.md
 
@@ -106,10 +107,14 @@ The checkpoints will be saved `checkpoints/` folder
 
 The evaluation results will be saved `results/` folder
 
-### 6. Export into ONNX format
+### 6. ONNX format
 
 To export the trained model into the ONNX format for deployment and inference in production environments.
 
 `uv run python export.py`
 
-The exported model will be saved `checkpoints/` folder 
+The exported model will be saved `checkpoints/` folder. 
+
+Then run below command to perform evaluation with ONNX model,
+
+`uv run python eval_onnx.py`
